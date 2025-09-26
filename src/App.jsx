@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Loading from './pages/Loading'
 import Login from './pages/Login'
@@ -16,6 +16,7 @@ import Diary3 from "./pages/Diary3.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import TermsOfUse from "./pages/Termsofuse.jsx";
 import About from './pages/About'
+import ErrorBoundary from './components/ErrorBoundary'
 
 function App() {
   const [isLoading, setIsLoading] = useState(true)
@@ -37,7 +38,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <InnerAppRoutes />
+        <ErrorBoundary>
+          <InnerAppRoutes />
+        </ErrorBoundary>
       </AuthProvider>
     </Router>
   )
@@ -48,6 +51,7 @@ export default App
 // Separate component so we can read auth context and render a top-level banner
 function InnerAppRoutes() {
   const { needsDriveAuth, requestDriveAuthorization, user } = useAuth();
+  const location = useLocation();
 
   return (
     <>
@@ -67,7 +71,7 @@ function InnerAppRoutes() {
         </div>
       )}
       <div className="pt-0">
-        <Routes>
+        <Routes key={location.pathname + location.search}>
           {/* Public routes */}
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />

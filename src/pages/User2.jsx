@@ -11,6 +11,7 @@ const User2 = () => {
     const navigate = useNavigate();
     const [entries, setEntries] = useState([]);
     const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+    const [showCalendarOverlay, setShowCalendarOverlay] = useState(false);
     const handleDeleteEntry = async (entryId) => {
         const entry = entries.find(e => e.id === entryId);
         if (entry && entry.fileId) {
@@ -168,7 +169,7 @@ const User2 = () => {
             {/* Buttons - fixed at bottom */}
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center justify-center gap-10 md:gap-20 xl:gap-44">
                 {/* Left small button */}
-                <button className="w-10 h-10 md:w-[60px] md:h-[60px] rounded-full bg-[#CC3048] flex items-center justify-center
+                <button onClick={() => setShowCalendarOverlay(true)} className="w-10 h-10 md:w-[60px] md:h-[60px] rounded-full bg-[#CC3048] flex items-center justify-center
             transition-all duration-300 transform hover:scale-110 hover:bg-[#E1596E]">
                     <Calendar className="text-white w-4 h-4 md:w-6 md:h-6" />
                 </button>
@@ -190,6 +191,44 @@ const User2 = () => {
                     <User className="text-white w-4 h-4 md:w-6 md:h-6" />
                 </button>
             </div>
+
+            {/* Calendar Overlay Modal */}
+            {showCalendarOverlay && (
+                <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60">
+                    <div className="bg-[#01203a] rounded-lg p-6 w-[92%] max-w-2xl">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-white text-lg font-semibold">Select date</h3>
+                            <button onClick={() => setShowCalendarOverlay(false)} className="text-white/70">Close</button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-white/80 text-sm">Pick a date</label>
+                                <input type="date" className="w-full mt-2 p-2 rounded bg-white/5 text-white border border-white/10" onChange={(e) => {
+                                    const v = e.target.value;
+                                    if (!v) return;
+                                    setShowCalendarOverlay(false);
+                                    navigate(`/user2?date=${v}`);
+                                }} />
+                            </div>
+                            <div>
+                                <label className="text-white/80 text-sm">Or choose from your entries</label>
+                                <div className="mt-2 max-h-64 overflow-auto">
+                                    {entriesByDate.length === 0 ? (
+                                        <div className="text-white/60">No entries yet.</div>
+                                    ) : (
+                                        entriesByDate.map(ed => (
+                                            <button key={ed.date} onClick={() => { setShowCalendarOverlay(false); navigate(`/user2?date=${ed.date}`) }} className="w-full text-left p-2 mb-2 rounded bg-white/5 hover:bg-white/10">
+                                                <div className="font-piedra text-white">{new Date(ed.date + 'T00:00:00').toLocaleDateString()}</div>
+                                                <div className="text-xs text-white/70">{ed.items.length} entr{ed.items.length===1?'y':'ies'}</div>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
 
             {/* Option overlay inside same page */}

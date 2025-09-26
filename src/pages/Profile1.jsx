@@ -135,15 +135,6 @@ const Profile1 = () => {
                 </div>
             </div>
 
-            {/* Drive debug (temporary) */}
-            <div className="px-4 sm:px-6">
-                <button onClick={handleDriveCheck} className="px-4 py-2 bg-white/20 rounded">Check Drive</button>
-                {driveCheck && (
-                    <pre className="mt-3 whitespace-pre-wrap text-xs bg-black/30 p-3 rounded">{JSON.stringify(driveCheck, null, 2)}</pre>
-                )}
-            </div>
-
-
             {/* Themes Row */}
             <div className="flex items-center justify-center mt-8 md:mt-0 gap-4 px-4 sm:px-6">
                 <span className="text-base md:text-lg font-piedra tracking-wider">Themes =</span>
