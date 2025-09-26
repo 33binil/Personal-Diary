@@ -175,6 +175,10 @@ const Diary1 = () => {
             }
 
             // start
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('Microphone access is not available in this browser.')
+                return
+            }
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
             mediaStreamRef.current = stream
             // choose a mime type that is broadly supported; prefer opus in webm when available
@@ -188,7 +192,17 @@ const Diary1 = () => {
                     else mimeType = 'audio/webm'
                 }
             } catch (e) { console.warn('MIME detection failed', e); mimeType = 'audio/webm' }
-            const mediaRecorder = (typeof MediaRecorder !== 'undefined' && mimeType) ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+            let mediaRecorder
+            try {
+                if (typeof MediaRecorder === 'undefined') throw new Error('MediaRecorder not supported')
+                mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+            } catch (e) {
+                console.error('MediaRecorder init failed', e)
+                // cleanup stream
+                try { if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null } } catch {}
+                alert('Recording is not supported by this browser or failed to initialize.')
+                return
+            }
             mediaRecorderRef.current = mediaRecorder
             const chunks = []
             let startAt = Date.now()
@@ -227,7 +241,14 @@ const Diary1 = () => {
                     setShowRecorderOverlay(false)
                 }
             }
-            mediaRecorder.start()
+            try {
+                mediaRecorder.start()
+            } catch (e) {
+                console.error('MediaRecorder.start failed', e)
+                try { if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null } } catch {}
+                alert('Failed to start recording.')
+                return
+            }
             setIsRecording(true)
             // show overlay immediately (visualizer may fail in some browsers)
             setShowRecorderOverlay(true)

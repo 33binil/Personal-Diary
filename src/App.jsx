@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Loading from './pages/Loading'
 import Login from './pages/Login'
@@ -50,8 +50,7 @@ export default App
 
 // Separate component so we can read auth context and render a top-level banner
 function InnerAppRoutes() {
-  const { needsDriveAuth, requestDriveAuthorization, user } = useAuth();
-  const location = useLocation();
+  const { needsDriveAuth, requestDriveAuthorization, user, loading } = useAuth();
 
   return (
     <>
@@ -71,25 +70,29 @@ function InnerAppRoutes() {
         </div>
       )}
       <div className="pt-0">
-        <Routes key={location.pathname + location.search}>
-          {/* Public routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/user1" element={<User1 />} />
-          <Route path="/user2" element={<User2 />} />
-          <Route path="/user3" element={<User3 />} />
-          <Route path="/profile1" element={<Profile1 />} />
-          <Route path="/profile2" element={<Profile2 />} />
-          <Route path="/profile3" element={<Profile3 />} />
-          <Route path="/diary1" element={<Diary1 />} />
-          <Route path="/diary2" element={<Diary2 />} />
-          <Route path="/diary3" element={<Diary3 />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfUse />} />
-          {/* Redirect any unknown routes to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        {loading ? (
+          <Loading />
+        ) : (
+          <Routes>
+            {/* Public routes */}
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/user1" element={<User1 />} />
+            <Route path="/user2" element={<User2 />} />
+            <Route path="/user3" element={<User3 />} />
+            <Route path="/profile1" element={<Profile1 />} />
+            <Route path="/profile2" element={<Profile2 />} />
+            <Route path="/profile3" element={<Profile3 />} />
+            <Route path="/diary1" element={<Diary1 />} />
+            <Route path="/diary2" element={<Diary2 />} />
+            <Route path="/diary3" element={<Diary3 />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfUse />} />
+            {/* Redirect any unknown routes to home */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        )}
       </div>
     </>
   )
