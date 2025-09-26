@@ -14,6 +14,27 @@ export function initFirebaseAdmin() {
     console.log('Firebase Admin initialized from service account file')
     return
   }
+  // Fallback: initialize using individual environment variables (useful on Render)
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY
+  const projectId = process.env.FIREBASE_PROJECT_ID
+  if (clientEmail && privateKey && projectId) {
+    // privateKey may have literal \n sequences; convert them to newlines
+    const normalizedKey = privateKey.replace(/\\n/g, '\n')
+    const serviceAccount = {
+      client_email: clientEmail,
+      private_key: normalizedKey,
+      project_id: projectId
+    }
+    try {
+      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) })
+      initialized = true
+      console.log('Firebase Admin initialized from environment variables')
+      return
+    } catch (e) {
+      console.warn('Firebase Admin init from env failed', e)
+    }
+  }
   // If no service account, try application default credentials
   try {
     admin.initializeApp()
