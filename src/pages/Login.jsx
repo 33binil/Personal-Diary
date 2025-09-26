@@ -28,7 +28,9 @@ const Login = () => {
             setStep('accountSelected');
         } catch (error) {
             console.error('Google account selection failed:', error);
-            setError('Failed to select Google account. Please set up Firebase first.');
+            // Surface the real error message in production to help debugging
+            const message = error?.message || String(error);
+            setError(`Failed to select Google account. ${message}`);
         } finally {
             setIsLoading(false);
         }
