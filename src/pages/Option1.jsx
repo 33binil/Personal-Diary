@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { User, Search, HelpCircle, LogOut } from "lucide-react"; // Icons
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const Option1 = ({ open = false, onClose = () => {} }) => {
     const [animOpen, setAnimOpen] = useState(false);
+    const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const [showDatePicker, setShowDatePicker] = useState(false)
+    const [pickedDate, setPickedDate] = useState('')
 
     useEffect(() => {
         if (open) {
@@ -39,6 +43,31 @@ const Option1 = ({ open = false, onClose = () => {} }) => {
 
                     {/* Bottom Menu Box */}
                     <div className="bg-[#011637]/90 w-full md:max-w-[768px] lg:max-w-[1040px] flex-1 px-6 py-6 md:px-12 md:py-10 lg:px-20 lg:py-12">
+                        {/* User Info Section */}
+                        <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/20">
+                            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
+                                {user?.photoURL ? (
+                                    <img 
+                                        src={user.photoURL} 
+                                        alt="Profile" 
+                                        className="w-full h-full object-cover"
+                                    />
+                                ) : (
+                                    <span className="text-white font-bold">
+                                        {user?.displayName ? user.displayName.charAt(0) : 'U'}
+                                    </span>
+                                )}
+                            </div>
+                            <div>
+                                <p className="text-white font-piedra tracking-wider text-sm md:text-lg">
+                                    {user?.displayName || 'User Name'}
+                                </p>
+                                <p className="text-white/70 text-xs md:text-sm">
+                                    {user?.email || 'user@email.com'}
+                                </p>
+                            </div>
+                        </div>
+                        
                         {/* Menu Items */}
                         <div className="flex flex-col text-[14px] md:text-xl lg:text-2xl font-piedra tracking-wider gap-4 md:gap-8 lg:gap-10 text-white">
                             {/* Profile */}
@@ -51,21 +80,53 @@ const Option1 = ({ open = false, onClose = () => {} }) => {
                             </button>
 
                             {/* Search by Date */}
-                            <button className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
-                                <Search className="w-6 h-6" />
-                                Search by Date
-                            </button>
+                            <div className="relative">
+                                <button onClick={() => setShowDatePicker(v => !v)} className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
+                                    <Search className="w-6 h-6" />
+                                    Search by Date
+                                </button>
+                                {showDatePicker && (
+                                    <div className="absolute left-0 mt-2 bg-[#01203a] border border-white/10 rounded-lg p-4 w-[260px] z-40">
+                                        <label className="text-sm text-white/80 block mb-2">Select a date</label>
+                                        <input
+                                            type="date"
+                                            value={pickedDate}
+                                            onChange={(e) => setPickedDate(e.target.value)}
+                                            className="w-full p-2 rounded bg-white/5 border border-white/10 text-white"
+                                        />
+                                        <div className="mt-3 flex justify-end gap-2">
+                                            <button onClick={() => { setShowDatePicker(false); setPickedDate('') }} className="px-3 py-1 rounded bg-white/10">Cancel</button>
+                                            <button onClick={() => {
+                                                if (!pickedDate) return alert('Please choose a date')
+                                                // navigate to the user page with date query
+                                                navigate(`/user1?date=${pickedDate}`)
+                                                setShowDatePicker(false)
+                                                onClose()
+                                            }} className="px-3 py-1 rounded bg-white/80 text-[#001331]">Go</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Help/About */}
-                            <button className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
+                            <button onClick={() => { navigate('/about'); onClose() }} className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
                                 <HelpCircle className="w-6 h-6" />
                                 Help / About
                             </button>
 
                             {/* Logout */}
                             <button
-                                onClick={() => navigate('/')}
-                                className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
+                                onClick={async () => {
+                                    try {
+                                        await logout();
+                                        navigate('/');
+                                        onClose();
+                                    } catch (error) {
+                                        console.error('Logout failed:', error);
+                                    }
+                                }}
+                                className="flex items-center gap-4 hover:bg-red-500/30 px-4 py-3 rounded-lg transition-all text-red-300 hover:text-red-200"
+                            >
                                 <LogOut className="w-6 h-6" />
                                 Logout
                             </button>

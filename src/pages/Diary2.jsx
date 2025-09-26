@@ -1,13 +1,73 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, MoreHorizontal, Menu, RefreshCcw, Image as ImageIcon, Mic } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, MoreHorizontal, Menu, RefreshCcw, Image as ImageIcon, Mic, Save, Check } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import PageIntroFade from "../components/PageIntroFade.jsx";
+import PromptBar from "../components/PromptBar";
 
 const Diary2 = () => {
     const navigate = useNavigate()
+    const { saveDiaryEntry, user, driveInitialized, getAllDiaryEntries } = useAuth()
+    const location = useLocation()
     const [text, setText] = useState('')
+    const [title, setTitle] = useState('')
     const [focused, setFocused] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
+    const [saved, setSaved] = useState(false)
+    const [showSuccess, setShowSuccess] = useState(false)
+    const [showDonePopup, setShowDonePopup] = useState(false)
+    const [showLeavePrompt, setShowLeavePrompt] = useState(false)
+    const [successInfo, setSuccessInfo] = useState({ images: 0, audio: 0, hasText: false })
+    const [images, setImages] = useState([])
+    const [audioClips, setAudioClips] = useState([])
+    const [prompt, setPrompt] = useState('')
+    const [isLoadingEntry, setIsLoadingEntry] = useState(false)
+    const [isRecording, setIsRecording] = useState(false)
+    const mediaRecorderRef = useRef(null)
+    const mediaStreamRef = useRef(null)
+    const audioCtxRef = useRef(null)
+    const analyserRef = useRef(null)
+    const sourceRef = useRef(null)
+    const rafRef = useRef(null)
+    const canvasRef = useRef(null)
+    const [showRecorderOverlay, setShowRecorderOverlay] = useState(false)
+    const [viewerImage, setViewerImage] = useState(null)
     const editorRef = useRef(null)
+    const imageInputRef = useRef(null)
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const openId = params.get('openId')
+        if (!openId) return
+        setIsLoadingEntry(true)
+        try {
+            const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+            const found = local.find(e => e.id === openId)
+            if (found) {
+                setTitle(found.title || '')
+                setText(found.content || '')
+                setImages(found.images || [])
+                setAudioClips(found.audio || [])
+                setPrompt(found.prompt || '')
+                return
+            }
+        } catch (e) {}
+
+        (async () => {
+            try {
+                const all = await getAllDiaryEntries()
+                const found = all.find(e => e.id === openId || e.id === decodeURIComponent(openId))
+                if (found) {
+                    setTitle(found.title || '')
+                    setText(found.content || '')
+                    setImages(found.images || [])
+                    setAudioClips(found.audio || [])
+                    setPrompt(found.prompt || '')
+                }
+            } catch (err) { console.warn('Failed to load entry for openId', err) }
+            finally { setIsLoadingEntry(false) }
+        })()
+    }, [location.search, driveInitialized])
 
     // Auto-resize textarea height to match content
     useEffect(() => {
@@ -23,47 +83,326 @@ const Diary2 = () => {
         return () => window.removeEventListener('resize', resize)
     }, [text])
 
+    const readFilesAsDataUrls = async (fileList) => {
+        const files = Array.from(fileList || [])
+        const promises = files.map(file => new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve({ name: file.name, dataUrl: reader.result })
+            reader.onerror = reject
+            reader.readAsDataURL(file)
+        }))
+        return Promise.all(promises)
+    }
+
+    
+
+    const handlePickImages = () => {
+        if (imageInputRef.current) imageInputRef.current.click()
+    }
+
+    const onImagesSelected = async (e) => {
+        try {
+            const selected = await readFilesAsDataUrls(e.target.files)
+            setImages(prev => [...prev, ...selected])
+            e.target.value = ''
+        } catch (err) {
+            console.error('Failed to read images', err)
+            alert('Failed to read selected images')
+        }
+    }
+
+    const removeImage = (idx) => {
+        setImages(prev => prev.filter((_, i) => i !== idx))
+    }
+
+    const removeAudioClip = (idx) => {
+        setAudioClips(prev => prev.filter((_, i) => i !== idx))
+    }
+
+    const handleDiscard = () => {
+        try {
+            if (mediaRecorderRef.current && isRecording) mediaRecorderRef.current.stop()
+            if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null }
+            if (rafRef.current) cancelAnimationFrame(rafRef.current)
+            if (audioCtxRef.current) { try { audioCtxRef.current.close() } catch {}; audioCtxRef.current = null }
+        } catch {}
+        setIsRecording(false)
+        setShowRecorderOverlay(false)
+        try {
+            const today = new Date().toISOString().split('T')[0]
+            const keyOf = (e) => `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}`
+            const currentSig = `${today}__${title.trim()}__${text.trim()}`
+            const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+            const filtered = local.filter(e => keyOf(e) !== currentSig)
+            localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered))
+        } catch {}
+        setText('')
+        setTitle('')
+        setImages([])
+        setAudioClips([])
+        setShowLeavePrompt(false)
+        navigate(-1)
+    }
+
+    const toggleRecording = async () => {
+        try {
+            if (isRecording) {
+                setIsRecording(false)
+                if (mediaRecorderRef.current) mediaRecorderRef.current.stop()
+                setShowRecorderOverlay(false)
+                return
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            mediaStreamRef.current = stream
+            let mimeType = 'audio/webm;codecs=opus'
+            try {
+                if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+                    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mimeType = 'audio/webm;codecs=opus'
+                    else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm'
+                    else if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4'
+                    else if (MediaRecorder.isTypeSupported('audio/mpeg')) mimeType = 'audio/mpeg'
+                    else mimeType = 'audio/webm'
+                }
+            } catch (e) { console.warn('MIME detection failed', e); mimeType = 'audio/webm' }
+            const mediaRecorder = (typeof MediaRecorder !== 'undefined' && mimeType) ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+            mediaRecorderRef.current = mediaRecorder
+            const chunks = []
+            let startAt = Date.now()
+            mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data) }
+            mediaRecorder.onstop = async () => {
+                try {
+                    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
+                    const durationMs = Date.now() - startAt
+                    const dataUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onloadend = () => resolve(reader.result)
+                        reader.onerror = reject
+                        reader.readAsDataURL(blob)
+                    })
+                    const ext = mimeType && mimeType.includes('mp4') ? '.mp4' : mimeType && mimeType.includes('mpeg') ? '.mp3' : '.webm'
+                    setAudioClips(prev => [...prev, { name: `recording_${new Date().toISOString()}${ext}`, dataUrl, durationMs }])
+                } catch (err) {
+                    console.error('Failed to process recording', err)
+                    alert('Failed to process recording')
+                } finally {
+                    if (mediaStreamRef.current) {
+                        mediaStreamRef.current.getTracks().forEach(t => t.stop())
+                        mediaStreamRef.current = null
+                    }
+                    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+                    if (audioCtxRef.current) { try { audioCtxRef.current.close() } catch {}; audioCtxRef.current = null }
+                    analyserRef.current = null
+                    sourceRef.current = null
+                    setShowRecorderOverlay(false)
+                }
+            }
+            mediaRecorder.start()
+            setIsRecording(true)
+            // show overlay immediately
+            setShowRecorderOverlay(true)
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext
+                const audioCtx = new AudioCtx()
+                const analyser = audioCtx.createAnalyser()
+                analyser.fftSize = 256
+                const source = audioCtx.createMediaStreamSource(stream)
+                source.connect(analyser)
+                audioCtxRef.current = audioCtx
+                analyserRef.current = analyser
+                sourceRef.current = source
+                const bufferLength = analyser.frequencyBinCount
+                const dataArray = new Uint8Array(bufferLength)
+                const draw = () => {
+                    if (!canvasRef.current || !analyserRef.current) return
+                    const canvas = canvasRef.current
+                    const ctx = canvas.getContext('2d')
+                    const width = canvas.width
+                    const height = canvas.height
+                    ctx.clearRect(0, 0, width, height)
+                    analyserRef.current.getByteFrequencyData(dataArray)
+                    const barCount = 48
+                    const step = Math.floor(bufferLength / barCount)
+                    const barWidth = width / barCount
+                    for (let i = 0; i < barCount; i++) {
+                        const v = dataArray[i * step] / 255
+                        const barHeight = Math.max(4, v * height)
+                        const x = i * barWidth
+                        const y = height - barHeight
+                        ctx.fillStyle = 'rgba(255,255,255,0.9)'
+                        ctx.fillRect(x + 2, y, barWidth - 4, barHeight)
+                    }
+                    rafRef.current = requestAnimationFrame(draw)
+                }
+                rafRef.current = requestAnimationFrame(draw)
+            } catch (e) { console.warn('Visualizer init failed', e) }
+        } catch (err) {
+            console.error('Mic access failed', err)
+            alert('Microphone not available or permission denied')
+        }
+    }
+
+    const saveToLocal = () => {
+        const currentDate = new Date().toISOString().split('T')[0]
+        const entryTitle = title.trim() || 'My Diary Entry'
+        const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+        local.push({
+            id: `${Date.now()}_local`,
+            title: entryTitle,
+            content: text.trim(),
+            prompt: prompt || '',
+            date: currentDate,
+            images,
+            audio: audioClips,
+            theme: 2,
+            createdAt: new Date().toISOString()
+        })
+        localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(local))
+    }
+
+    const handleSave = async () => {
+        if (!text.trim() && !title.trim() && images.length === 0 && audioClips.length === 0) {
+            alert('Please write something before saving!')
+            return
+        }
+        setIsSaving(true)
+        setSaved(false)
+        try {
+            const currentDate = new Date().toISOString().split('T')[0]
+            const entryTitle = title.trim() || 'My Diary Entry'
+            let savedCloud = false
+            let result = null
+            if (driveInitialized) {
+                result = await saveDiaryEntry(entryTitle, text.trim(), currentDate, images, audioClips, 2, prompt)
+                savedCloud = !!result.success
+                // If cloud save succeeded, remove a matching local entry to avoid duplicates
+                if (savedCloud) {
+                    try {
+                        const sig = `${currentDate}__${(entryTitle||'').trim()}__${(text||'').trim()}`
+                        const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+                        const filtered = local.filter(e => `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}` !== sig)
+                        localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered))
+                    } catch (e) { console.warn('Failed to remove local duplicate after cloud save', e) }
+                }
+            }
+            if (!savedCloud) {
+                saveToLocal()
+            }
+            {
+                setSaved(true)
+                setSuccessInfo({ images: images.length, audio: audioClips.length, hasText: !!text.trim() })
+                setShowSuccess(true)
+                setImages([])
+                setAudioClips([])
+                setTitle('')
+                setText('')
+                setTimeout(() => setSaved(false), 3000)
+                setTimeout(() => {
+                    setShowSuccess(false)
+                    navigate('/user2')
+                }, 1500)
+            }
+        } catch (error) {
+            console.error('Error saving diary:', error)
+            try { saveToLocal() } catch {}
+            setSaved(true)
+            setSuccessInfo({ images: images.length, audio: audioClips.length, hasText: !!text.trim() })
+            setShowSuccess(true)
+            setImages([])
+            setAudioClips([])
+            setTitle('')
+            setText('')
+            setTimeout(() => setSaved(false), 3000)
+            setTimeout(() => {
+                setShowSuccess(false)
+                navigate('/user2')
+            }, 1500)
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     return (
         <div className="min-h-screen w-full bg-[#CC596F] text-white relative pb-28">
             <PageIntroFade outOnly hold={500} fadeOut={300} />
             {/* Top bar */}
             <div className="flex items-center justify-between px-4 sm:px-6 md:px-8 pt-4 sm:pt-6 md:pt-8">
-                <button onClick={() => navigate(-1)} aria-label="Back" className="p-2 rounded-lg hover:bg-white/10">
+                <button onClick={() => {
+                    const hasDirty = (text.trim().length > 0 || title.trim().length > 0 || images.length > 0 || audioClips.length > 0) && !saved
+                    if (hasDirty) setShowLeavePrompt(true); else navigate(-1)
+                }} aria-label="Back" className="p-2 rounded-lg hover:bg-white/10">
                     <ArrowLeft className="w-6 h-6" />
                 </button>
 
                 <div className="flex items-center gap-6">
                     <MoreHorizontal className="w-6 h-6" />
-                    <button className="px-6 py-2 rounded-xl bg-white/80 text-[#001331] font-semibold shadow-sm hover:bg-white">
+                    <button onClick={() => { setShowDonePopup(true); handleSave(); setTimeout(() => navigate('/user2'), 1200); }} className="px-6 py-2 rounded-xl bg-white/80 text-[#001331] font-semibold shadow-sm hover:bg-white">
                         Save
                     </button>
                 </div>
             </div>
 
-            {/* Date */}
+            {/* Date and Title */}
             <div className="px-6 md:px-24 mt-6 md:mt-8">
-                <div className="flex items-baseline gap-3">
-                    <div className="font-piedra leading-none text-3xl md:text-[44px]">10</div>
-                    <div className="text-base md:text-xl">April 2025</div>
+                <div className="flex items-baseline gap-3 mb-4">
+                    <div className="font-piedra leading-none text-2xl md:text-[44px]">{new Date().getDate()}</div>
+                    <div className="text-sm md:text-xl">{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
                 </div>
+                <input
+                    type="text"
+                    placeholder="Entry title (optional)"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="w-full bg-transparent text-white placeholder-gray-200 text-lg md:text-xl font-semibold border-b border-white/20 focus:border-white/60 outline-none pb-2"
+                />
             </div>
 
             {/* Prompt bar */}
-            <div className="px-3 md:px-24 mt-4 md:mt-6">
-                <div className="bg-white/10 rounded-xl h-12 sm:h-14 md:h-16 flex items-center px-4 sm:px-6">
-                    <div className="font-piedra tracking-wide text-sm sm:text-xl md:text-2xl">Diary Prompt..............</div>
-                    <div className="ml-auto flex items-center left-3 relative md:left-0 gap-2 md:gap-10 text-xs sm:text-sm text-gray-200">
-                        <div className="flex items-center gap-2 cursor-pointer hover:text-white">
-                            <Menu className="w-4 h-4" />
-                            <span>Show All</span>
-                        </div>
-                        <div className="flex items-center gap-2 cursor-pointer hover:text-white">
-                            <RefreshCcw className="w-4 h-4" />
-                            <span>New Prompt</span>
-                        </div>
+            <PromptBar user={user} date={new Date().toISOString().split('T')[0]} onChange={(p) => setPrompt(p)} />
+
+            {/* Loading overlay when opening a past entry */}
+            {isLoadingEntry && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+                    <div className="bg-white/10 text-white rounded-xl p-6 flex flex-col items-center gap-3">
+                        <div className="animate-spin border-4 border-white/30 border-t-white rounded-full w-12 h-12"></div>
+                        <div>Loading Diary...</div>
                     </div>
                 </div>
-            </div>
+            )}
+
+            {(images.length > 0 || audioClips.length > 0) && (
+                <div className="px-4 sm:px-8 md:px-24 mt-3">
+                    <div className="flex flex-wrap items-start gap-3">
+                        {images.map((img, idx) => (
+                                    <div key={`img-${idx}`} className="relative overflow-hidden rounded-lg border border-white/20 hover:border-white/40">
+                                        <button onClick={() => setViewerImage(img.dataUrl)} className="block">
+                                            <img src={img.dataUrl} alt="Selected" className="w-[150px] max-w-[45vw] h-auto object-contain" />
+                                        </button>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); removeImage(idx) }}
+                                    aria-label={`Remove image ${idx + 1}`}
+                                    className="absolute -top-2 -right-2 bg-black/70 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        ))}
+                                {audioClips.map((a, idx) => (
+                            <div key={`aud-${idx}`} className="flex items-center gap-2 bg-white/10 rounded-lg p-2 pr-3 border border-white/20 max-w-full">
+                                <div className="w-2 h-2 rounded-full bg-green-200 animate-pulse"></div>
+                                <audio src={audioUrls[idx] || a.dataUrl} controls className="h-8 max-w-[60vw] sm:max-w-[160px]" onError={(e) => console.error('Audio playback error', e)} />
+                                <button
+                                    onClick={() => removeAudioClip(idx)}
+                                    aria-label={`Remove audio ${idx + 1}`}
+                                    className="ml-2 px-2 py-1 rounded bg-black/60 hover:bg-red-600 text-white text-sm"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Ruled lines editable area */}
             <div className="px-4 sm:px-8 md:px-16 mt-12 md:mt-20">
@@ -108,20 +447,94 @@ const Diary2 = () => {
                 </div>
             </div>
 
+            {/* Hidden inputs */}
+            <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={onImagesSelected}
+            />
+
             {/* Bottom toolbar */}
             <div className="fixed left-1/2 -translate-x-1/2 bottom-4 sm:bottom-5 md:bottom-6">
                 <div className="bg-[#942243]/60 backdrop-blur-md rounded-2xl px-6 sm:px-8 md:px-10 py-2 sm:py-3 flex items-center gap-8 md:gap-16 shadow-lg">
-                    <button className="p-2 rounded-full hover:bg-white/10" aria-label="Add Image">
-                        <ImageIcon className="w-5 h-5" />
+                    <button onClick={handlePickImages} className="p-2 rounded-full hover:bg-white/10" aria-label="Add Image">
+                        <div className="relative">
+                            <ImageIcon className="w-5 h-5" />
+                            {images.length > 0 && (
+                                <span className="absolute -top-2 -right-3 text-[10px] bg-white text-[#001331] rounded-full px-1">{images.length}</span>
+                            )}
+                        </div>
                     </button>
-                    <button className="p-2 rounded-full hover:bg-white/10" aria-label="Voice Input">
-                        <Mic className="w-5 h-5" />
+                    <button onClick={toggleRecording} className={`p-2 rounded-full hover:bg-white/10 ${isRecording ? 'animate-pulse' : ''}`} aria-label="Voice Input">
+                        <div className="relative">
+                            <Mic className={`w-5 h-5 ${isRecording ? 'text-red-200' : ''}`} />
+                            {audioClips.length > 0 && (
+                                <span className="absolute -top-2 -right-3 text-[10px] bg-white text-[#001331] rounded-full px-1">{audioClips.length}</span>
+                            )}
+                        </div>
                     </button>
                 </div>
             </div>
 
-            {/* Bottom gradient */}
-            <div className="absolute bottom-0 left-0 w-full h-[10px] bg-gradient-to-r from-black via-gray-900 to-black pointer-events-none"></div>
+            {/* Bottom gradient removed per request */}
+
+            {/* Success popup */}
+            {showSuccess && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40">
+                    <div className="bg-white text-[#001331] rounded-2xl px-6 py-5 shadow-xl w-[90%] max-w-sm text-center">
+                        <div className="font-semibold text-lg mb-2">Saved successfully</div>
+                        <div className="text-sm opacity-80">
+                            {successInfo.hasText ? 'Text saved' : 'No text' } · {successInfo.images} image(s) · {successInfo.audio} voice clip(s)
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Done popup for manual Save button */}
+            {showDonePopup && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40">
+                    <div className="bg-white text-[#001331] rounded-2xl px-6 py-5 shadow-xl w-[90%] max-w-sm text-center">
+                        <div className="font-semibold text-lg">Diary completed</div>
+                    </div>
+                </div>
+            )}
+
+            {/* Recording overlay with visualizer */}
+            {showRecorderOverlay && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60">
+                    <div className="w-[90%] max-w-xl bg-white/10 border border-white/20 rounded-2xl p-6 text-center">
+                        <div className="text-white mb-4">Listening... speak now</div>
+                        <div className="w-full h-24 bg-black/30 rounded-lg overflow-hidden">
+                            <canvas ref={canvasRef} width={800} height={160} className="w-full h-full" />
+                        </div>
+                        <div className="mt-5 flex justify-center">
+                            <button onClick={toggleRecording} className="px-6 py-2 rounded-lg bg-red-500 text-white">Stop</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {viewerImage && (
+                <div className="fixed inset-0 z-[140] bg-black/90 flex items-center justify-center" onClick={() => setViewerImage(null)}>
+                    <img src={viewerImage} alt="Full" className="max-w-[95%] max-h-[90%] object-contain" />
+                </div>
+            )}
+
+            {showLeavePrompt && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60">
+                    <div className="bg-[#6a2740] text-white rounded-2xl p-6 w-[90%] max-w-sm border border-white/20">
+                        <div className="text-lg font-semibold mb-2">Unsaved changes</div>
+                        <div className="text-sm opacity-80 mb-5">Save your diary before leaving?</div>
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={handleDiscard} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20">Discard</button>
+                            <button onClick={async () => { setShowLeavePrompt(false); await handleSave(); }} className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white">Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

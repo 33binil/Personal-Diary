@@ -57,7 +57,7 @@ onClick={() => navigate('/profile3')}
                             </button>
 
                             {/* Help/About */}
-                            <button className="flex items-center gap-4 hover:bg-[#1B2424]/70 px-4 py-3 rounded-lg transition-all">
+                            <button onClick={() => { navigate('/about'); onClose() }} className="flex items-center gap-4 hover:bg-[#1B2424]/70 px-4 py-3 rounded-lg transition-all">
                                 <HelpCircle className="w-6 h-6" />
                                 Help / About
                             </button>
