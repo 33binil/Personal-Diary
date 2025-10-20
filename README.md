@@ -142,4 +142,3 @@ This project demonstrates:
 
 ---
 
-*Built with ❤️ using React, Firebase, and modern web technologies*
