@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { User, Search, HelpCircle, LogOut } from "lucide-react"; // Icons
+import { User, Search, HelpCircle, LogOut, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const Option1 = ({ open = false, onClose = () => {} }) => {
     const [animOpen, setAnimOpen] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [selectedDate, setSelectedDate] = useState('');
     const { user, logout } = useAuth();
     const navigate = useNavigate();
-    const [showDatePicker, setShowDatePicker] = useState(false)
-    const [pickedDate, setPickedDate] = useState('')
 
     useEffect(() => {
         if (open) {
@@ -19,121 +19,145 @@ const Option1 = ({ open = false, onClose = () => {} }) => {
         }
     }, [open]);
 
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/');
+            onClose();
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    };
+
+    const handleDateSelect = () => {
+        if (selectedDate) {
+            navigate(`/user1?date=${selectedDate}`);
+            setShowDatePicker(false);
+            onClose();
+        }
+    };
+
+    if (!open && !animOpen) return null;
+
     return (
         <div className={`fixed inset-0 z-[60] ${open ? "" : "pointer-events-none"}`}>
-            {/* Sliding Panel with 70% transparency so User1 stays visible behind */}
+            {/* Glassmorphism Backdrop */}
+            <div 
+                className={`fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${animOpen ? 'opacity-100' : 'opacity-0'}`}
+                onClick={onClose}
+            />
+            
+            {/* Sliding Panel with Glassmorphism */}
             <div
-                className={`absolute inset-0 bg-[#010C1E]/70 overflow-y-auto transform transition-transform duration-300 ease-out ${animOpen ? "translate-x-0" : "-translate-x-full"}`}
-                onClick={(e) => {
-                    // Close when clicking empty area of the panel (optional)
-                    if (e.target === e.currentTarget) onClose();
-                }}
+                className={`fixed inset-y-0 left-0 w-4/5 max-w-md bg-white/5 backdrop-blur-xl border-r border-white/10 shadow-2xl transform transition-transform duration-300 ease-out ${animOpen ? "translate-x-0" : "-translate-x-full"}`}
             >
-                {/* Content aligned from the left, full height */}
-                <div className="h-full w-full flex flex-col">
-                    {/* Top Box */}
-                    <div className="bg-[#9D9D9D]/90 w-full md:max-w-[768px] lg:max-w-[1040px] h-64 sm:h-56 md:h-64 lg:h-[420px] flex items-center justify-center">
-                        {/* Logo inside Top Box */}
-                        <img
-                            src="/logo.jpg"
-                            alt="Logo"
-                            className="w-40 md:w-52 object-contain"
-                        />
-                    </div>
-
-                    {/* Bottom Menu Box */}
-                    <div className="bg-[#011637]/90 w-full md:max-w-[768px] lg:max-w-[1040px] flex-1 px-6 py-6 md:px-12 md:py-10 lg:px-20 lg:py-12">
-                        {/* User Info Section */}
-                        <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/20">
-                            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden">
-                                {user?.photoURL ? (
-                                    <img 
-                                        src={user.photoURL} 
-                                        alt="Profile" 
-                                        className="w-full h-full object-cover"
-                                    />
-                                ) : (
-                                    <span className="text-white font-bold">
-                                        {user?.displayName ? user.displayName.charAt(0) : 'U'}
-                                    </span>
-                                )}
-                            </div>
-                            <div>
-                                <p className="text-white font-piedra tracking-wider text-sm md:text-lg">
-                                    {user?.displayName || 'User Name'}
-                                </p>
-                                <p className="text-white/70 text-xs md:text-sm">
-                                    {user?.email || 'user@email.com'}
-                                </p>
-                            </div>
+                {/* Close Button */}
+                <div className="flex justify-end p-4">
+                    <button 
+                        onClick={onClose}
+                        className="text-white/70 hover:text-white p-2 transition-colors"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                {/* User Profile Section */}
+                <div className="px-6 py-4 border-b border-white/10">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-[#0c2a5a]/30 flex items-center justify-center">
+                            <User className="w-8 h-8 text-white/80" />
                         </div>
-                        
-                        {/* Menu Items */}
-                        <div className="flex flex-col text-[14px] md:text-xl lg:text-2xl font-piedra tracking-wider gap-4 md:gap-8 lg:gap-10 text-white">
-                            {/* Profile */}
-                            <button
-                                onClick={() => navigate('/profile1')}
-                                className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all"
+                        <div>
+                            <h3 className="text-white font-medium">{user?.displayName || 'User'}</h3>
+                            <p className="text-white/60 text-sm">{user?.email || ''}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Menu Items */}
+                <div className="p-4 space-y-2">
+                    <button
+                        onClick={() => {
+                            navigate('/profile1');
+                            onClose();
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#0c2a5a]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <User className="w-5 h-5" />
+                        <span>Profile</span>
+                    </button>
+
+                    <button
+                        onClick={() => setShowDatePicker(true)}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#0c2a5a]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <Search className="w-5 h-5" />
+                        <span>Search by Date</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            navigate('/about');
+                            onClose();
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#0c2a5a]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <HelpCircle className="w-5 h-5" />
+                        <span>Help / About</span>
+                    </button>
+                </div>
+
+                {/* Logout Button */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-[#0c2a5a]/30 hover:bg-[#0c2a5a]/40 text-white transition-colors"
+                    >
+                        <LogOut className="w-5 h-5" />
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Date Picker Modal with Blur Effect */}
+            {showDatePicker && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                        onClick={() => setShowDatePicker(false)}
+                    />
+                    <div className="relative bg-[#1A1A2E]/90 backdrop-blur-xl rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-semibold text-white">Select Date</h3>
+                            <button 
+                                onClick={() => setShowDatePicker(false)}
+                                className="text-white/70 hover:text-white transition-colors"
                             >
-                                <User className="w-6 h-6" />
-                                Profile
+                                <X className="w-6 h-6" />
                             </button>
-
-                            {/* Search by Date */}
-                            <div className="relative">
-                                <button onClick={() => setShowDatePicker(v => !v)} className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
-                                    <Search className="w-6 h-6" />
-                                    Search by Date
-                                </button>
-                                {showDatePicker && (
-                                    <div className="absolute left-0 mt-2 bg-[#01203a] border border-white/10 rounded-lg p-4 w-[260px] z-40">
-                                        <label className="text-sm text-white/80 block mb-2">Select a date</label>
-                                        <input
-                                            type="date"
-                                            value={pickedDate}
-                                            onChange={(e) => setPickedDate(e.target.value)}
-                                            className="w-full p-2 rounded bg-white/5 border border-white/10 text-white"
-                                        />
-                                        <div className="mt-3 flex justify-end gap-2">
-                                            <button onClick={() => { setShowDatePicker(false); setPickedDate('') }} className="px-3 py-1 rounded bg-white/10">Cancel</button>
-                                            <button onClick={() => {
-                                                if (!pickedDate) return alert('Please choose a date')
-                                                // navigate to the user page with date query
-                                                navigate(`/user1?date=${pickedDate}`)
-                                                setShowDatePicker(false)
-                                                onClose()
-                                            }} className="px-3 py-1 rounded bg-white/80 text-[#001331]">Go</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Help/About */}
-                            <button onClick={() => { navigate('/about'); onClose() }} className="flex items-center gap-4 hover:bg-[#0c2a5a]/70 px-4 py-3 rounded-lg transition-all">
-                                <HelpCircle className="w-6 h-6" />
-                                Help / About
-                            </button>
-
-                            {/* Logout */}
+                        </div>
+                        <div className="space-y-4">
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#0c2a5a] transition-all"
+                            />
                             <button
-                                onClick={async () => {
-                                    try {
-                                        await logout();
-                                        navigate('/');
-                                        onClose();
-                                    } catch (error) {
-                                        console.error('Logout failed:', error);
-                                    }
-                                }}
-                                className="flex items-center gap-4 hover:bg-red-500/30 px-4 py-3 rounded-lg transition-all text-red-300 hover:text-red-200"
+                                onClick={handleDateSelect}
+                                disabled={!selectedDate}
+                                className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+                                    selectedDate 
+                                        ? 'bg-[#0c2a5a] text-white hover:bg-[#1a3b6e]' 
+                                        : 'bg-white/5 text-white/50 cursor-not-allowed'
+                                }`}
                             >
-                                <LogOut className="w-6 h-6" />
-                                Logout
+                                Go to Date
                             </button>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

@@ -1,13 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, MoreHorizontal, Menu, RefreshCcw, Image as ImageIcon, Mic, Save, Check } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import PageIntroFade from "../components/PageIntroFade.jsx";
 import PromptBar from "../components/PromptBar";
 
 const Diary3 = () => {
     const navigate = useNavigate()
-    const { saveDiaryEntry, user, driveInitialized } = useAuth()
+    const { saveDiaryEntry, user, driveInitialized, getAllDiaryEntries, deleteDiaryEntry } = useAuth()
+    const location = useLocation()
     const [text, setText] = useState('')
     const [title, setTitle] = useState('')
     const [focused, setFocused] = useState(false)
@@ -16,6 +17,7 @@ const Diary3 = () => {
     const [showSuccess, setShowSuccess] = useState(false)
     const [showDonePopup, setShowDonePopup] = useState(false)
     const [showLeavePrompt, setShowLeavePrompt] = useState(false)
+    const [showContinuePopup, setShowContinuePopup] = useState(false)
     const [successInfo, setSuccessInfo] = useState({ images: 0, audio: 0, hasText: false })
     const [images, setImages] = useState([])
     const [prompt, setPrompt] = useState('')
@@ -32,6 +34,73 @@ const Diary3 = () => {
     const [viewerImage, setViewerImage] = useState(null)
     const editorRef = useRef(null)
     const imageInputRef = useRef(null)
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+    const [isEditing, setIsEditing] = useState(false)
+    const [originalId, setOriginalId] = useState(null)
+    const [showRefreshConfirm, setShowRefreshConfirm] = useState(false)
+    const [isLoadingEntry, setIsLoadingEntry] = useState(false)
+
+    // Load entry when opened from user page via ?openId=
+    useEffect(() => {
+        const params = new URLSearchParams(location.search)
+        const openId = params.get('openId')
+        const decodedId = openId ? decodeURIComponent(openId) : null
+        setIsEditing(!!decodedId)
+        setOriginalId(decodedId)
+        if (!decodedId) return
+        setIsLoadingEntry(true)
+        try {
+            const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+            const found = local.find(e => e.id === decodedId)
+            if (found) {
+                setTitle(found.title || '')
+                setText(found.content || '')
+                setImages(found.images || [])
+                setAudioClips(found.audio || [])
+                setPrompt(found.prompt || '')
+                setDate(found.date || new Date().toISOString().split('T')[0])
+                setIsLoadingEntry(false)
+                return
+            }
+        } catch (e) {}
+
+        (async () => {
+            try {
+                const all = await getAllDiaryEntries()
+                const found = all.find(e => e.id === decodedId)
+                if (found) {
+                    setTitle(found.title || '')
+                    setText(found.content || '')
+                    setImages(found.images || [])
+                    setAudioClips(found.audio || [])
+                    setPrompt(found.prompt || '')
+                    setDate(found.date || new Date().toISOString().split('T')[0])
+                }
+                setIsLoadingEntry(false)
+            } catch (err) { console.warn('Failed to load entry for decodedId', err); setIsLoadingEntry(false) }
+        })()
+    }, [location.search, driveInitialized])
+
+    // Autosave unsaved changes
+    useEffect(() => {
+        if (saved) return
+        const data = { text, title, prompt, date }
+        if (text.trim() || title.trim() || images.length || audioClips.length) {
+            localStorage.setItem('DIARY_AUTOSAVE', JSON.stringify(data))
+        } else {
+            localStorage.removeItem('DIARY_AUTOSAVE')
+        }
+    }, [text, title, images, audioClips, prompt, date, saved])
+
+    // Check for autosaved data on load
+    useEffect(() => {
+        try {
+            const autosave = localStorage.getItem('DIARY_AUTOSAVE')
+            if (autosave) {
+                setShowContinuePopup(true)
+            }
+        } catch {}
+    }, [])
 
     // Auto-resize textarea height to match content
     useEffect(() => {
@@ -46,6 +115,17 @@ const Diary3 = () => {
         window.addEventListener('resize', resize)
         return () => window.removeEventListener('resize', resize)
     }, [text])
+
+    // Prevent accidental refresh
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            e.preventDefault();
+            setShowRefreshConfirm(true);
+            return '';
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
 
     const readFilesAsDataUrls = async (fileList) => {
         const files = Array.from(fileList || [])
@@ -91,11 +171,9 @@ const Diary3 = () => {
         setIsRecording(false)
         setShowRecorderOverlay(false)
         try {
-            const today = new Date().toISOString().split('T')[0]
-            const keyOf = (e) => `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}`
-            const currentSig = `${today}__${title.trim()}__${text.trim()}`
+            const sig = `${date}__${title.trim()}__${text.trim()}`
             const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
-            const filtered = local.filter(e => keyOf(e) !== currentSig)
+            const filtered = local.filter(e => `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}` !== sig)
             localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered))
         } catch {}
         setText('')
@@ -103,6 +181,7 @@ const Diary3 = () => {
         setImages([])
         setAudioClips([])
         setShowLeavePrompt(false)
+        localStorage.removeItem('DIARY_AUTOSAVE')
         navigate(-1)
     }
 
@@ -224,7 +303,6 @@ const Diary3 = () => {
     }
 
     const saveToLocal = () => {
-        const currentDate = new Date().toISOString().split('T')[0]
         const entryTitle = title.trim() || 'My Diary Entry'
         const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
         local.push({
@@ -232,8 +310,8 @@ const Diary3 = () => {
             title: entryTitle,
             content: text.trim(),
             prompt: prompt || '',
-            date: currentDate,
-            images,
+            date: date,
+            images: [], // Don't save images to avoid quota issues
             audio: audioClips,
             theme: 3,
             createdAt: new Date().toISOString()
@@ -246,60 +324,186 @@ const Diary3 = () => {
             alert('Please write something before saving!')
             return
         }
-        setIsSaving(true)
-        setSaved(false)
+        
+        // Show saving state immediately
+        setShowSuccess(true);
+        setSuccessInfo({ images: images.length, audio: audioClips.length, hasText: !!text.trim() });
+        setSaved(true);
+        
+        // Create entry data
+        const entryTitle = title.trim() || 'My Diary Entry';
+        const entryContent = text.trim();
+        const newEntry = {
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            title: entryTitle,
+            content: entryContent,
+            date,
+            images: [...images],
+            audio: [...audioClips],
+            theme: 3,
+            prompt: prompt || '',
+            createdAt: new Date().toISOString()
+        };
+
+        // Navigate to user page immediately with saving state
+        navigate('/user3', { 
+            state: { 
+                timestamp: Date.now(), 
+                key: Math.random(), 
+                action: isEditing ? 'edit' : 'create',
+                oldId: isEditing ? originalId : undefined, 
+                newEntry
+            } 
+        });
+
+        // Continue with save in background
+        setIsSaving(true);
+        
         try {
-            const currentDate = new Date().toISOString().split('T')[0]
-            const entryTitle = title.trim() || 'My Diary Entry'
-            let savedCloud = false
-            let result = null
-            if (driveInitialized) {
-                result = await saveDiaryEntry(entryTitle, text.trim(), currentDate, images, audioClips, 3, prompt)
-                savedCloud = !!result.success
-                if (savedCloud) {
+            // Delete old entry if editing
+            if (isEditing && originalId) {
+                try {
+                    const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
+                    const entry = local.find(e => e.id === originalId)
+                    if (entry && entry.fileId) {
+                        await deleteDiaryEntry(entry.fileId)
+                    }
+                    const filtered = local.filter(e => e.id !== originalId)
+                    localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered))
+                } catch (e) { 
+                    console.warn('Failed to delete local old entry', e) 
+                }
+
+                if (driveInitialized) {
                     try {
-                        const sig = `${currentDate}__${(entryTitle||'').trim()}__${(text||'').trim()}`
-                        const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
-                        const filtered = local.filter(e => `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}` !== sig)
-                        localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered))
-                    } catch (e) { console.warn('Failed to remove local duplicate after cloud save', e) }
+                        const all = await getAllDiaryEntries()
+                        const entry = all.find(e => e.id === originalId)
+                        if (entry && entry.fileId) {
+                            await deleteDiaryEntry(entry.fileId)
+                        }
+                    } catch (e) {
+                        console.warn('Failed to delete cloud old entry', e)
+                    }
                 }
             }
+
+            // Save to cloud if available
+            let savedCloud = false;
+            let result = null;
+            
+            if (driveInitialized) {
+                try {
+                    result = await saveDiaryEntry(
+                        entryTitle,
+                        entryContent,
+                        date,
+                        images,
+                        audioClips,
+                        3,
+                        prompt
+                    );
+                    savedCloud = !!result?.success;
+                    
+                    if (savedCloud && result?.id) {
+                        newEntry.id = result.id;
+                        newEntry.fileId = result.fileId;
+                    }
+                    
+                    // Remove local duplicate if cloud save was successful
+                    if (savedCloud) {
+                        try {
+                            const sig = `${date}__${entryTitle}__${entryContent}`;
+                            const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]');
+                            const filtered = local.filter(e => 
+                                `${e.date}__${(e.title||'').trim()}__${(e.content||'').trim()}` !== sig
+                            );
+                            localStorage.setItem('DIARY_LOCAL_ENTRIES', JSON.stringify(filtered));
+                        } catch (e) { 
+                            console.warn('Failed to remove local duplicate after cloud save', e) 
+                        }
+                    }
+                } catch (e) {
+                    console.error('Cloud save failed, falling back to local', e);
+                    savedCloud = false;
+                }
+            }
+
+            // Save locally if cloud save failed or not available
             if (!savedCloud) {
-                saveToLocal()
+                saveToLocal();
             }
-            {
-                setSaved(true)
-                setSuccessInfo({ images: images.length, audio: audioClips.length, hasText: !!text.trim() })
-                setShowSuccess(true)
-                setImages([])
-                setAudioClips([])
-                setTitle('')
-                setText('')
-                setTimeout(() => setSaved(false), 3000)
-                setTimeout(() => {
-                    setShowSuccess(false)
-                    navigate('/user3')
-                }, 1500)
-            }
+
+            // Update the entry in the user page with the final state
+            navigate('/user3', { 
+                replace: true,
+                state: { 
+                    timestamp: Date.now(),
+                    key: Math.random(),
+                    action: isEditing ? 'edit' : 'create',
+                    oldId: isEditing ? originalId : undefined,
+                    newEntry: {
+                        ...newEntry,
+                        id: result?.id || newEntry.id,
+                        fileId: result?.fileId
+                    }
+                } 
+            });
         } catch (error) {
-            console.error('Error saving diary:', error)
-            try { saveToLocal() } catch {}
-            setSaved(true)
-            setSuccessInfo({ images: images.length, audio: audioClips.length, hasText: !!text.trim() })
-            setShowSuccess(true)
+            console.error('Error saving diary:', error);
+            
+            // Fallback to local save
+            try { 
+                saveToLocal();
+                
+                // Update with local save status
+                navigate('/user3', { 
+                    replace: true,
+                    state: { 
+                        timestamp: Date.now(),
+                        key: Math.random(),
+                        action: isEditing ? 'edit' : 'create',
+                        oldId: isEditing ? originalId : undefined,
+                        newEntry: {
+                            ...newEntry,
+                            id: `${Date.now()}_local`
+                        },
+                        saveError: 'Saved locally due to connection issues'
+                    } 
+                });
+            } catch (e) {
+                console.error('Local save also failed:', e);
+                // If both cloud and local save failed, just show the error in the user page
+                navigate('/user3', { 
+                    replace: true,
+                    state: { 
+                        timestamp: Date.now(),
+                        key: Math.random(),
+                        saveError: 'Failed to save entry. Please try again.'
+                    } 
+                });
+            }
+        } finally {
+            setIsSaving(false);
+        }
+    }
+
+    const handleContinue = () => {
+        try {
+            const data = JSON.parse(localStorage.getItem('DIARY_AUTOSAVE'))
+            setText(data.text || '')
+            setTitle(data.title || '')
             setImages([])
             setAudioClips([])
-            setTitle('')
-            setText('')
-            setTimeout(() => setSaved(false), 3000)
-            setTimeout(() => {
-                setShowSuccess(false)
-                navigate('/user3')
-            }, 1500)
-        } finally {
-            setIsSaving(false)
-        }
+            setPrompt(data.prompt || '')
+            setDate(data.date || new Date().toISOString().split('T')[0])
+            localStorage.removeItem('DIARY_AUTOSAVE')
+        } catch {}
+        setShowContinuePopup(false)
+    }
+
+    const handleDiscardContinue = () => {
+        localStorage.removeItem('DIARY_AUTOSAVE')
+        setShowContinuePopup(false)
     }
 
     return (
@@ -316,7 +520,7 @@ const Diary3 = () => {
 
                 <div className="flex items-center gap-6">
                     <MoreHorizontal className="w-6 h-6" />
-                    <button onClick={() => { setShowDonePopup(true); handleSave(); setTimeout(() => navigate('/user3'), 1200); }} className="px-6 py-2 rounded-xl bg-white/80 text-[#001331] font-semibold shadow-sm hover:bg-white">
+                    <button onClick={() => { setShowDonePopup(true); handleSave(); setTimeout(() => navigate('/user3', { state: { timestamp: Date.now() } }), 1200); }} className="px-6 py-2 rounded-xl bg-white/80 text-[#001331] font-semibold shadow-sm hover:bg-white">
                         Save
                     </button>
                 </div>
@@ -325,8 +529,8 @@ const Diary3 = () => {
             {/* Date and Title */}
             <div className="px-6 md:px-24 mt-6 md:mt-8">
                 <div className="flex items-baseline gap-3 mb-4">
-                    <div className="font-piedra leading-none text-2xl md:text-[44px]">{new Date().getDate()}</div>
-                    <div className="text-sm md:text-xl">{new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+                    <div className="font-piedra leading-none text-2xl md:text-[44px]">{new Date(date + 'T00:00:00').getDate()}</div>
+                    <div className="text-sm md:text-xl">{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
                 </div>
                 <input
                     type="text"
@@ -338,7 +542,17 @@ const Diary3 = () => {
             </div>
 
             {/* Prompt bar */}
-            <PromptBar user={user} date={new Date().toISOString().split('T')[0]} onChange={(p) => setPrompt(p)} />
+            <PromptBar user={user} date={date} onChange={(p) => setPrompt(p)} />
+
+            {/* Loading overlay when opening a past entry */}
+            {isLoadingEntry && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+                    <div className="bg-white/10 text-white rounded-xl p-6 flex flex-col items-center gap-3">
+                        <div className="animate-spin border-4 border-white/30 border-t-white rounded-full w-12 h-12"></div>
+                        <div>Loading Diary...</div>
+                    </div>
+                </div>
+            )}
 
             {(images.length > 0 || audioClips.length > 0) && (
                 <div className="px-4 sm:px-8 md:px-24 mt-3">
@@ -467,7 +681,21 @@ const Diary3 = () => {
             {showDonePopup && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40">
                     <div className="bg-white text-[#001331] rounded-2xl px-6 py-5 shadow-xl w-[90%] max-w-sm text-center">
-                        <div className="font-semibold text-lg">Diary completed</div>
+                        {isSaving ? (
+                            <>
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#001331] mx-auto mb-3"></div>
+                                <div className="font-semibold text-lg">Saving to server...</div>
+                                <p className="text-sm text-gray-600 mt-1">Please wait while we save your entry</p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Check className="w-6 h-6 text-green-600" />
+                                </div>
+                                <div className="font-semibold text-lg">Diary completed</div>
+                                <p className="text-sm text-gray-600 mt-1">Your entry has been saved successfully</p>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -501,6 +729,33 @@ const Diary3 = () => {
                         <div className="flex gap-3 justify-end">
                             <button onClick={handleDiscard} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20">Discard</button>
                             <button onClick={async () => { setShowLeavePrompt(false); await handleSave(); }} className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white">Save</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Continue from autosave popup */}
+            {showContinuePopup && (
+                <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60">
+                    <div className="bg-[#1f2424] text-white rounded-2xl p-6 w-[90%] max-w-sm border border-white/20">
+                        <div className="text-lg font-semibold mb-2">Continue from resubmission</div>
+                        <div className="text-sm opacity-80 mb-5">You have unsaved changes. Would you like to continue where you left off?</div>
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={handleDiscardContinue} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20">Discard</button>
+                            <button onClick={handleContinue} className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white">Continue</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Refresh confirmation modal */}
+            {showRefreshConfirm && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+                    <div className="bg-white text-black p-6 rounded-lg shadow-lg w-[90%] max-w-sm text-center">
+                        <p className="mb-4">Refreshing will log you out. Are you sure?</p>
+                        <div className="flex gap-4 justify-center">
+                            <button onClick={() => { setShowRefreshConfirm(false); window.location.reload(); }} className="px-4 py-2 bg-red-500 text-white rounded">OK</button>
+                            <button onClick={() => setShowRefreshConfirm(false)} className="px-4 py-2 bg-gray-500 text-white rounded">Cancel</button>
                         </div>
                     </div>
                 </div>

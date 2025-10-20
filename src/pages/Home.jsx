@@ -66,17 +66,60 @@ const Home = () => {
                 animationStage === 'content-show' ? 'opacity-100' : 'opacity-0'
             }`}>
                 {/* Personal Diary Title */}
-                <h1 className="text-white text-6xl md:text-7xl lg:text-8xl font-pinyon text-center mb-12 tracking-wide drop-shadow-[3px_6px_1px_rgba(0,0,0,0.25)]">
+                <h1 className={`text-white text-6xl md:text-7xl lg:text-8xl font-pinyon text-center mb-12 tracking-wide drop-shadow-[3px_6px_1px_rgba(0,0,0,0.25)] transform transition-all duration-1000 ease-out ${
+                    animationStage === 'content-show'
+                        ? 'opacity-100 translate-y-0 scale-100'
+                        : 'opacity-0 translate-y-8 scale-95'
+                }`}>
                     Personal Diary
                 </h1>
-                
+
                 {/* Sign in / Sign up Button */}
-                <button 
+                <button
                     onClick={handleSignInClick}
-                    className="bg-black hover:bg-gray-800 text-white text-[10px] md:text-[14px] lg:text-[16px] font-piedra tracking-wider py-4 px-8 rounded-lg shadow-lg transition-all duration-300 transform hover:scale-105 border border-gray-600"
+                    className={`bg-black hover:bg-gray-800 text-white text-[10px] md:text-[14px] lg:text-[16px] font-piedra tracking-wider py-4 px-8 rounded-lg shadow-lg transition-all duration-500 transform hover:scale-105 border border-gray-600 relative overflow-hidden group ${
+                        animationStage === 'content-show'
+                            ? 'opacity-100 translate-y-0'
+                            : 'opacity-0 translate-y-4'
+                    }`}
                 >
-                    Sign in / Sign up
+                    <span className={`relative z-10 transition-all duration-300 ${
+                        animationStage === 'content-show'
+                            ? 'opacity-100'
+                            : 'opacity-0'
+                    }`}>
+                        Sign in / Sign up
+                    </span>
+                    <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent transform -skew-x-12 transition-transform duration-700 ease-out ${
+                        animationStage === 'content-show'
+                            ? 'translate-x-full opacity-0'
+                            : '-translate-x-full opacity-100'
+                    }`}></div>
                 </button>
+            </div>
+
+            {/* Scroll Down Indicator */}
+            <div className={`absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 transition-opacity duration-1000 ${
+                animationStage === 'content-show' ? 'opacity-100' : 'opacity-0'
+            }`}>
+                <div className="flex flex-col items-center animate-bounce">
+                    <span className="text-white text-xs md:text-sm font-piedra tracking-wider mb-2 opacity-80">
+                        Scroll Down
+                    </span>
+                    <svg
+                        className="w-6 h-6 text-white animate-pulse"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                        />
+                    </svg>
+                </div>
             </div>
         </div>
         

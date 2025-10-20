@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, Plus, User, Trash2 } from "lucide-react"; // icons
+import { Calendar, Plus, User, Trash2, Settings } from "lucide-react"; // icons
 import Option2 from "./Option2";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import PageIntroFade from "../components/PageIntroFade";
 
@@ -9,9 +9,22 @@ const User2 = () => {
     const [optionOpen, setOptionOpen] = useState(false);
     const { user, getAllDiaryEntries, driveInitialized, deleteDiaryEntry } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [entries, setEntries] = useState([]);
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [isLoadingEntries, setIsLoadingEntries] = useState(false);
     const [showCalendarOverlay, setShowCalendarOverlay] = useState(false);
+    const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
+    const [showSavingPopup, setShowSavingPopup] = useState(false);
+
+    // Show saving popup immediately when coming from a save action
+    useEffect(() => {
+        if (location.state?.action) {
+            setShowSavingPopup(true);
+            const timer = setTimeout(() => setShowSavingPopup(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [location.state?.action]);
     const handleDeleteEntry = async (entryId) => {
         const entry = entries.find(e => e.id === entryId);
         if (entry && entry.fileId) {
@@ -36,8 +49,8 @@ const User2 = () => {
     };
 
     useEffect(() => {
-        const load = async () => {
-            setIsLoadingEntries(true);
+        const load = async (showLoading = true) => {
+            if (showLoading) setIsLoadingEntries(true);
             try {
                 const local = JSON.parse(localStorage.getItem('DIARY_LOCAL_ENTRIES') || '[]')
                 let cloud = []
@@ -69,8 +82,32 @@ const User2 = () => {
                 setIsLoadingEntries(false);
             }
         };
-        load();
-    }, [driveInitialized, getAllDiaryEntries]);
+        load(true);
+    }, [driveInitialized, getAllDiaryEntries, location.key, location.state?.timestamp, location.state?.key]);
+
+    useEffect(() => {
+        if (location.state?.action === 'create' && location.state.newEntry) {
+            setEntries(prev => [location.state.newEntry, ...prev]);
+        } else if (location.state?.action === 'edit' && location.state.oldId && location.state.newEntry) {
+            setEntries(prev => prev.map(e => e.id === location.state.oldId ? location.state.newEntry : e));
+        }
+    }, [location.state?.action, location.state?.newEntry, location.state?.oldId]);
+
+    useEffect(() => {
+        if (location.state?.timestamp) {
+            setRefreshTrigger(prev => prev + 1);
+        }
+    }, [location.state?.timestamp]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            e.preventDefault();
+            setShowRefreshConfirm(true);
+            return '';
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
 
     const entriesByDate = useMemo(() => {
         const map = new Map();
@@ -89,15 +126,13 @@ const User2 = () => {
             {/* Intro overlay (fade in -> 1s hold -> fade out) */}
 <PageIntroFade outOnly hold={500} fadeOut={300} />
 
-            {/* Top Left 3 Lines */}
+            {/* Top Left Settings Icon */}
             <button
                 onClick={() => setOptionOpen((v) => !v)}
-                className="absolute top-6 left-6 z-[70] flex flex-col gap-2 focus:outline-none"
+                className="absolute top-6 left-6 z-[70] flex items-center justify-center focus:outline-none"
                 aria-label="Open options"
             >
-                <div className="h-[2px] w-[12px] bg-white transition-all duration-300"></div>
-                <div className="h-[2px] w-[24px] bg-white transition-all duration-300"></div>
-                <div className="h-[2px] w-[36px] bg-white transition-all duration-300"></div>
+                <Settings className="w-6 h-6 text-white" />
             </button>
 
             {/* Top theme removed per request */}
@@ -194,34 +229,60 @@ const User2 = () => {
 
             {/* Calendar Overlay Modal */}
             {showCalendarOverlay && (
-                <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60">
-                    <div className="bg-[#01203a] rounded-lg p-6 w-[92%] max-w-2xl">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-white text-lg font-semibold">Select date</h3>
-                            <button onClick={() => setShowCalendarOverlay(false)} className="text-white/70">Close</button>
+                <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-[#CC3048]/10 backdrop-blur-lg rounded-2xl p-6 w-[92%] max-w-2xl border border-white/20 shadow-2xl">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-white text-xl font-semibold">Select date</h3>
+                            <button 
+                                onClick={() => setShowCalendarOverlay(false)} 
+                                className="text-white/80 hover:text-white transition-colors"
+                            >
+                                ✕
+                            </button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-white/80 text-sm">Pick a date</label>
-                                <input type="date" className="w-full mt-2 p-2 rounded bg-white/5 text-white border border-white/10" onChange={(e) => {
-                                    const v = e.target.value;
-                                    if (!v) return;
-                                    setShowCalendarOverlay(false);
-                                    navigate(`/user2?date=${v}`);
-                                }} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="bg-white/5 backdrop-blur-sm p-4 rounded-xl border border-white/10">
+                                <label className="text-white/80 text-sm font-medium mb-2 block">Pick a date</label>
+                                <input 
+                                    type="date" 
+                                    className="w-full p-3 rounded-lg bg-white/5 text-white border border-white/10 focus:outline-none focus:ring-2 focus:ring-[#CC3048] transition-all duration-200"
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        if (!v) return;
+                                        setShowCalendarOverlay(false);
+                                        navigate(`/user2?date=${v}`);
+                                    }}
+                                />
                             </div>
-                            <div>
-                                <label className="text-white/80 text-sm">Or choose from your entries</label>
-                                <div className="mt-2 max-h-64 overflow-auto">
+                            <div className="bg-white/5 backdrop-blur-sm p-4 rounded-xl border border-white/10">
+                                <label className="text-white/80 text-sm font-medium mb-2 block">Your entries</label>
+                                <div className="max-h-64 overflow-y-auto pr-2 -mr-2">
                                     {entriesByDate.length === 0 ? (
-                                        <div className="text-white/60">No entries yet.</div>
+                                        <div className="text-white/60 text-center py-6">No entries yet</div>
                                     ) : (
-                                        entriesByDate.map(ed => (
-                                            <button key={ed.date} onClick={() => { setShowCalendarOverlay(false); navigate(`/user2?date=${ed.date}`) }} className="w-full text-left p-2 mb-2 rounded bg-white/5 hover:bg-white/10">
-                                                <div className="font-piedra text-white">{new Date(ed.date + 'T00:00:00').toLocaleDateString()}</div>
-                                                <div className="text-xs text-white/70">{ed.items.length} entr{ed.items.length===1?'y':'ies'}</div>
-                                            </button>
-                                        ))
+                                        <div className="space-y-2">
+                                            {entriesByDate.map(ed => (
+                                                <button 
+                                                    key={ed.date}
+                                                    onClick={() => { 
+                                                        setShowCalendarOverlay(false);
+                                                        navigate(`/user2?date=${ed.date}`);
+                                                    }}
+                                                    className="w-full text-left p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-200 border border-white/5 hover:border-white/20 flex justify-between items-center"
+                                                >
+                                                    <span className="font-medium text-white">
+                                                        {new Date(ed.date + 'T00:00:00').toLocaleDateString(undefined, {
+                                                            year: 'numeric',
+                                                            month: 'short',
+                                                            day: 'numeric'
+                                                        })}
+                                                    </span>
+                                                    <span className="text-xs bg-[#CC3048]/20 text-[#CC3048] px-2 py-1 rounded-full">
+                                                        {ed.items.length} entr{ed.items.length === 1 ? 'y' : 'ies'}
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -230,6 +291,31 @@ const User2 = () => {
                 </div>
             )}
 
+
+            {/* Refresh confirmation modal */}
+            {showRefreshConfirm && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+                    <div className="bg-white text-black p-6 rounded-lg shadow-lg w-[90%] max-w-sm text-center">
+                        <p className="mb-4">Refreshing will log you out. Are you sure?</p>
+                        <div className="flex gap-4 justify-center">
+                            <button onClick={() => { setShowRefreshConfirm(false); window.location.reload(); }} className="px-4 py-2 bg-red-500 text-white rounded">OK</button>
+                            <button onClick={() => setShowRefreshConfirm(false)} className="px-4 py-2 bg-gray-500 text-white rounded">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Saving to cloud popup - shown at top when coming from diary page */}
+            {showSavingPopup && (
+                <div className="fixed top-0 left-0 right-0 z-[100] flex justify-center pt-4">
+                    <div className="bg-white text-[#001331] rounded-lg px-6 py-3 shadow-lg w-[95%] max-w-md text-center animate-slideDown">
+                        <div className="font-semibold text-base">Saving to Google Drive...</div>
+                        <div className="text-xs opacity-80">
+                            Syncing may take time depending on your network. Updated diary will appear soon.
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Option overlay inside same page */}
             <Option2 open={optionOpen} onClose={() => setOptionOpen(false)} />

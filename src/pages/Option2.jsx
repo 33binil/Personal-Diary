@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { User, Search, HelpCircle, LogOut } from "lucide-react"; // Icons
+import { User, Search, HelpCircle, LogOut, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const Option2 = ({ open = false, onClose = () => {} }) => {
     const [animOpen, setAnimOpen] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [selectedDate, setSelectedDate] = useState('');
+    const { user, logout } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -15,64 +19,145 @@ const Option2 = ({ open = false, onClose = () => {} }) => {
         }
     }, [open]);
 
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/');
+            onClose();
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    };
+
+    const handleDateSelect = () => {
+        if (selectedDate) {
+            navigate(`/user2?date=${selectedDate}`);
+            setShowDatePicker(false);
+            onClose();
+        }
+    };
+
+    if (!open && !animOpen) return null;
+
     return (
         <div className={`fixed inset-0 z-[60] ${open ? "" : "pointer-events-none"}`}>
-            {/* Sliding Panel with 70% transparency so User1 stays visible behind */}
+            {/* Glassmorphism Backdrop */}
+            <div 
+                className={`fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${animOpen ? 'opacity-100' : 'opacity-0'}`}
+                onClick={onClose}
+            />
+            
+            {/* Sliding Panel with Glassmorphism */}
             <div
-                className={`absolute inset-0 bg-[#010C1E]/70 overflow-y-auto transform transition-transform duration-300 ease-out ${animOpen ? "translate-x-0" : "-translate-x-full"}`}
-                onClick={(e) => {
-                    // Close when clicking empty area of the panel (optional)
-                    if (e.target === e.currentTarget) onClose();
-                }}
+                className={`fixed inset-y-0 left-0 w-4/5 max-w-md bg-white/5 backdrop-blur-xl border-r border-white/10 shadow-2xl transform transition-transform duration-300 ease-out ${animOpen ? "translate-x-0" : "-translate-x-full"}`}
             >
-                {/* Content aligned from the left, full height */}
-                <div className="h-full w-full flex flex-col">
-                    {/* Top Box */}
-                    <div className="bg-[#9D9D9D]/90 w-full md:max-w-[768px] lg:max-w-[1040px] h-64 sm:h-56 md:h-64 lg:h-[420px] flex items-center justify-center">
-                        {/* Logo inside Top Box */}
-                        <img
-                            src="/logo.jpg"
-                            alt="Logo"
-                            className="w-40 md:w-52 object-contain"
-                        />
+                {/* Close Button */}
+                <div className="flex justify-end p-4">
+                    <button 
+                        onClick={onClose}
+                        className="text-white/70 hover:text-white p-2 transition-colors"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+                
+                {/* User Profile Section */}
+                <div className="px-6 py-4 border-b border-white/10">
+                    <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-[#622C36]/30 flex items-center justify-center">
+                            <User className="w-8 h-8 text-white/80" />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-medium">{user?.displayName || 'User'}</h3>
+                            <p className="text-white/60 text-sm">{user?.email || ''}</p>
+                        </div>
                     </div>
+                </div>
 
-                    {/* Bottom Menu Box */}
-                    <div className="bg-[#011637]/90 w-full md:max-w-[768px] lg:max-w-[1040px] flex-1 px-6 py-6 md:px-12 md:py-10 lg:px-20 lg:py-12">
-                        {/* Menu Items */}
-                        <div className="flex flex-col text-[14px] md:text-xl lg:text-2xl font-piedra tracking-wider gap-4 md:gap-8 lg:gap-10 text-white">
-                            {/* Profile */}
-                            <button
-onClick={() => navigate('/profile2')}
-                                className="flex items-center gap-4 hover:bg-[#622C36]/70 px-4 py-3 rounded-lg transition-all"
+                {/* Menu Items */}
+                <div className="p-4 space-y-2">
+                    <button
+                        onClick={() => {
+                            navigate('/profile2');
+                            onClose();
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#622C36]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <User className="w-5 h-5" />
+                        <span>Profile</span>
+                    </button>
+
+                    <button
+                        onClick={() => setShowDatePicker(true)}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#622C36]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <Search className="w-5 h-5" />
+                        <span>Search by Date</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            navigate('/about');
+                            onClose();
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-[#622C36]/30 transition-colors text-white/90 hover:text-white"
+                    >
+                        <HelpCircle className="w-5 h-5" />
+                        <span>Help / About</span>
+                    </button>
+                </div>
+
+                {/* Logout Button */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-white/10">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg bg-[#622C36]/30 hover:bg-[#622C36]/40 text-white transition-colors"
+                    >
+                        <LogOut className="w-5 h-5" />
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Date Picker Modal with Blur Effect */}
+            {showDatePicker && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                        onClick={() => setShowDatePicker(false)}
+                    />
+                    <div className="relative bg-[#1A1A2E]/90 backdrop-blur-xl rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-2xl">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-xl font-semibold text-white">Select Date</h3>
+                            <button 
+                                onClick={() => setShowDatePicker(false)}
+                                className="text-white/70 hover:text-white transition-colors"
                             >
-                                <User className="w-6 h-6" />
-                                Profile
+                                <X className="w-6 h-6" />
                             </button>
-
-                            {/* Search by Date */}
-                            <button className="flex items-center gap-4 hover:bg-[#622C36]/70 px-4 py-3 rounded-lg transition-all">
-                                <Search className="w-6 h-6" />
-                                Search by Date
-                            </button>
-
-                            {/* Help/About */}
-                            <button onClick={() => { navigate('/about'); onClose() }} className="flex items-center gap-4 hover:bg-[#622C36]/70 px-4 py-3 rounded-lg transition-all">
-                                <HelpCircle className="w-6 h-6" />
-                                Help / About
-                            </button>
-
-                            {/* Logout */}
+                        </div>
+                        <div className="space-y-4">
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-[#622C36] transition-all"
+                            />
                             <button
-                                onClick={() => navigate('/')}
-                                className="flex items-center gap-4 hover:bg-[#622C36]/70 px-4 py-3 rounded-lg transition-all">
-                                <LogOut className="w-6 h-6" />
-                                Logout
+                                onClick={handleDateSelect}
+                                disabled={!selectedDate}
+                                className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+                                    selectedDate 
+                                        ? 'bg-[#622C36] text-white hover:bg-[#7a3742]' 
+                                        : 'bg-white/5 text-white/50 cursor-not-allowed'
+                                }`}
+                            >
+                                Go to Date
                             </button>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
