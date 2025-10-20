@@ -3,9 +3,7 @@
 A modern, secure, and feature-rich diary application built with React and Firebase, designed for users to record their thoughts, memories, and daily experiences with multimedia support.
 
 ## 🚀 Live Demo
-[View Live Application]([https://personal-diary-85ff5.firebaseapp.com/](https://personal-diary-frontend.onrender.com))
-
-## ✨ Features
+[View Live Application](https://personal-diary-frontend.onrender.com)
 
 ### 🔐 **Secure Authentication**
 - Google OAuth integration for seamless login/signup
