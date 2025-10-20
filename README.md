@@ -28,6 +28,13 @@ A modern, secure, and feature-rich diary application built with React and Fireba
 - **Intuitive navigation** - Easy-to-use interface
 - **Dark theme support** - Easy on the eyes
 
+### ⚠️ **Error Handling**
+- **User-friendly error popups** - Clear, non-technical error messages for common issues
+- **Automatic error reporting** - Client-side errors are captured and displayed
+- **Graceful recovery** - Options to retry or navigate away from error states
+- **Form validation** - Real-time feedback for input errors
+  
+
 ## 🛠️ Technology Stack
 
 ### **Frontend**
